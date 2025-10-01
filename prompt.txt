@@ -1,0 +1,302 @@
+Write me a python function process_latex_table(file_path: str) -> Tuple[str, int, int].
+1. input is a directory of a single .txt file, which contains latex format table, such as
+2. output 1 is the directory of the png image for the rendered table, with file name the same with the input file name but with exrta _rendered surfix.
+3. output 2 is the number of columns in the table
+4. output 3 is the number of rows in the table
+5. show in the rendered picture the number of data rows and columns
+6. Should support Chinese characters
+7. Do not rely on LaTeX distribution!
+
+\begin{tabular}{l|rrr}
+\hline
+& & & \textbf{单位：\%} \\
+\hline
+\multirow{2}{*}{\textbf{指标}} & \multirow{2}{*}{\textbf{全国}} & \multirow{2}{*}{\textbf{城市}} & \multirow{2}{*}{\textbf{农村}} \\
+& & & \\
+\hline
+居民消费价格 & 0.2 & 0.3 & 0.1 \\
+其中: 食品烟酒 & 0.3 & 0.4 & 0.1 \\
+衣着 & 1.0 & 1.1 & 0.6 \\
+居住[$10$] & 0.0 & 0.0 & 0.0 \\
+生活用品及服务 & 0.1 & 0.1 & -0.1 \\
+交通通信 & -2.3 & -2.3 & -2.4 \\
+教育文化娱乐 & 2.0 & 2.1 & 1.5 \\
+医疗保健 & 1.1 & 1.1 & 1.3 \\
+其他用品及服务 & 3.2 & 3.4 & 2.5 \\
+\hline
+\end{tabular}
+
+6. if err, save a blank picture, and set the number of columns and rows both to 0. The white blank pic should have suffice_renderedErr
+
+3. output 2 is the number of columns in the data part (not that of the headers because the headers may be nested or merged)
+4. output 3 is the number of rows in the data part (not that of the headers because the headers may be nested or merged)
+7. note be careful that the table may contain nested or merged cells.
+
+
+
+
+
+
+
+
+
+
+
+
+I have the following code for processing latex table:
+import os
+import re
+import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
+from typing import Tuple, List
+from collections import Counter
+
+
+# Set Chinese font globally for Matplotlib to display Chinese characters
+plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'WenQuanYi Zen Hei', 'Arial Unicode MS', 'Heiti TC'] 
+plt.rcParams['axes.unicode_minus'] = False # Correctly display minus signs
+
+def clean_latex_cell(text: str) -> str:
+    """
+    Cleans a string from a LaTeX table cell, removing common commands
+    to extract the plain text content.
+    """
+    text = text.strip()
+    
+    # 1. Handle commands that wrap content in braces, e.g., \textbf{}, \text{}, \shortstack{}:
+    text = re.sub(r'\\(?:text[a-z]+|bf|it|sc|sffamily|shortstack)\s*\{(.*?)\}', r'\1', text, flags=re.DOTALL)
+    
+    # 2. Handle \multirow{rows}{width}{content} and \multicolumn{cols}{align}{content}
+    def extract_last_brace_content(match):
+        parts = re.findall(r'\{(.*?)\}', match.group(0), re.DOTALL)
+        return parts[-1] if parts else ''
+
+    text = re.sub(r'\\(?:multirow|multicolumn)\s*(\{.*?\})+\s*', extract_last_brace_content, text, flags=re.DOTALL)
+
+    # 3. Remove math mode delimiters like $...$
+    text = re.sub(r'\$(.*?)\$', r'\1', text)
+    
+    # 3.5. Clean up nested tabular environment artifacts
+    text = re.sub(r'\\begin\{tabular\}.*?\}', '', text) 
+    text = re.sub(r'\\end\{tabular\}', '', text)       
+    
+    # 4. Remove commands with optional arguments in brackets/footnotes, e.g., [10]
+    text = re.sub(r'\[.*?\]', '', text) 
+    text = re.sub(r'\\(?:hline|cline|cmidrule|vspace|smallskip|cdot|label)\s*(\{.*?\})?', '', text, flags=re.DOTALL) 
+    
+    # 5. Remove any remaining simple commands that are not followed by braces or brackets.
+    text = re.sub(r'\\([a-zA-Z]+)\s*', '', text)
+    
+    # 6. Clean up remaining leading/trailing whitespace and | characters
+    text = text.replace('|', '').strip()
+
+    return text.strip()
+
+def process_latex_table(file_path: str) -> Tuple[str, int, int]:
+    """
+    Renders a LaTeX table from a .txt file to a PNG image, including the fix for
+    row parsing and a new step to delete empty columns.
+    """
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"Input file not found at: {file_path}")
+
+    with open(file_path, 'r', encoding='utf-8') as f:
+        latex_content = f.read()
+
+    # --- 1. Parse LaTeX table into a Python list of lists (using the fixed logic) ---
+    table_inner_content_match = re.search(
+        r'\\begin{tabular}\{.*?\}\s*(.*?)\s*\\end{tabular}', 
+        latex_content, 
+        re.DOTALL | re.IGNORECASE
+    )
+    
+    if not table_inner_content_match:
+        table_inner_content_match = re.search(
+            r'\\begin{tabular}.*?\n(.*?)\n\\end{tabular}', 
+            latex_content, 
+            re.DOTALL
+        )
+        if not table_inner_content_match:
+            raise ValueError("Could not find a valid tabular environment in the file.")
+    
+    table_inner_content = table_inner_content_match.group(1).strip()
+    
+    table_data = []
+    
+    all_lines = table_inner_content.split('\n')
+    current_line_buffer = ""
+
+    for line in all_lines:
+        line = line.strip()
+        
+        if not line or line.startswith(r'%'):
+            continue
+            
+        if re.fullmatch(r'\\(?:hline|cline|cmidrule|vspace|smallskip).*', line, re.DOTALL):
+            continue
+            
+        current_line_buffer += (' ' if current_line_buffer and not current_line_buffer.endswith(' ') else '') + line.strip()
+        
+        is_complete_row = re.search(r'\\\\\s*$', current_line_buffer) or re.search(r'\\(?:hline|cline|cmidrule)', current_line_buffer)
+
+        if is_complete_row:
+            row_content = re.sub(r'\\\\\s*$', '', current_line_buffer).strip()
+            row_content = re.sub(r'\\(?:hline|cline|cmidrule|vspace|smallskip)\s*(\{.*?\})?', '', row_content, flags=re.DOTALL).strip()
+            
+            if row_content:
+                cells = [clean_latex_cell(cell) for cell in re.split(r'(?<!\\)&', row_content)]
+                
+                while cells and not cells[-1].strip():
+                    cells.pop()
+                    
+                if cells:
+                    table_data.append(cells)
+                    
+            current_line_buffer = ""
+            
+    if current_line_buffer.strip():
+        row_content = re.sub(r'\\\\\s*$', '', current_line_buffer).strip()
+        row_content = re.sub(r'\\(?:hline|cline|cmidrule|vspace|smallskip)\s*(\{.*?\})?', '', row_content, flags=re.DOTALL).strip()
+        if row_content:
+            cells = [clean_latex_cell(cell) for cell in re.split(r'(?<!\\)&', row_content)]
+            while cells and not cells[-1].strip():
+                cells.pop()
+            if cells:
+                table_data.append(cells)
+
+
+    if not table_data:
+        raise ValueError("The parsed table contains no data rows.")
+    
+    # --- 2. Determine canonical column count and pad/trim rows ---
+    all_row_lengths = [len(row) for row in table_data]
+    col_counts = Counter(all_row_lengths)
+    
+    # Fallback in case of highly irregular table structure (though unlikely now)
+    if not col_counts:
+        raise ValueError("Could not determine canonical column count.")
+        
+    canonical_num_cols = col_counts.most_common(1)[0][0]
+    
+    for row in table_data:
+        while len(row) < canonical_num_cols:
+            row.append('')
+        if len(row) > canonical_num_cols:
+            row[:] = row[:canonical_num_cols]
+    
+    # -----------------------------------------------------------------
+    # --- 3. Column Deletion: Identify and remove entirely empty columns ---
+    # -----------------------------------------------------------------
+    
+    # Determine which columns are entirely empty
+    cols_to_keep = []
+    
+    # Iterate through column indices
+    for col_idx in range(canonical_num_cols):
+        # A column is empty if the cell content is empty or only whitespace for ALL rows
+        is_empty = True
+        for row in table_data:
+            if row[col_idx].strip():
+                is_empty = False
+                break
+        
+        if not is_empty:
+            cols_to_keep.append(col_idx)
+
+    # Rebuild the table data with only the non-empty columns
+    new_table_data = []
+    for row in table_data:
+        new_row = [row[idx] for idx in cols_to_keep]
+        new_table_data.append(new_row)
+        
+    table_data = new_table_data # Update table_data to the clean version
+
+    # --- 4. Get final dimensions ---
+    num_rows = len(table_data)
+    num_cols = len(table_data[0]) if table_data else 0
+
+    if num_cols == 0:
+         raise ValueError("All columns were empty after cleaning.")
+
+    # -----------------------------------------------------------------
+    # --- 5. Render the table to a PNG image using Matplotlib ---
+    # -----------------------------------------------------------------
+    output_path = f"{os.path.splitext(file_path)[0]}_rendered.png"
+    
+    # Font setup (unchanged)
+    font_prop = None
+    cjk_fonts = ['SimHei', 'Microsoft YaHei', 'WenQuanYi Zen Hei', 'Arial Unicode MS', 'Heiti TC']
+    try:
+        font_path = fm.findfont(plt.rcParams['font.sans-serif'][0], fontext="ttf")
+        font_prop = fm.FontProperties(fname=font_path)
+    except Exception:
+        for font in cjk_fonts:
+            try:
+                font_path = fm.findfont(font, fontext="ttf")
+                font_prop = fm.FontProperties(fname=font_path)
+                break
+            except Exception:
+                continue
+
+    if not font_prop:
+        font_prop = fm.FontProperties(family='sans-serif')
+
+    fig, ax = plt.subplots(figsize=(num_cols * 1.5 + 2, num_rows * 0.4 + 2)) 
+    ax.axis('tight')
+    ax.axis('off')
+
+    the_table = ax.table(cellText=table_data, loc='center', cellLoc='center')
+    the_table.auto_set_font_size(False)
+    the_table.set_fontsize(10) 
+    the_table.scale(1.0, 1.2) 
+
+    for cell in the_table.get_celld().values():
+        cell.set_text_props(fontproperties=font_prop)
+
+    title_text = f"渲染表格 (Rendered Table)\n列数 (Columns): {num_cols}, 行数 (Rows): {num_rows}"
+    caption_match = re.search(r'\\caption\{(.*?)\}', latex_content, re.DOTALL)
+    if caption_match:
+        caption = clean_latex_cell(caption_match.group(1))
+        title_text = f"{caption}\n{title_text}"
+        
+    plt.title(title_text, fontsize=12, pad=20, fontproperties=font_prop)
+
+    plt.savefig(output_path, dpi=300, bbox_inches='tight', pad_inches=0.5)
+    plt.close(fig)
+
+    return output_path, num_cols, num_rows
+
+
+However, when dealing the the following content:
+\begin{table}
+
+\caption{2023年货物进出口总额及其增长率}
+\begin{tabular}{cc|c|c}
+\hline
+\multicolumn{2}{c|}{\multirow{2}{*}{指标}} & \multicolumn{1}{c|}{金额} & \multicolumn{1}{c}{比上年} \\
+\cline{3-4}
+\multicolumn{2}{c|}{} & \multicolumn{1}{|c|}{（亿元）} & \multicolumn{1}{|c}{增长(\%) } \\
+\hline
+\multicolumn{2}{l|}{货物进出口总额} & \multicolumn{1}{|c}{417568} & \multicolumn{1}{|c}{0.2} \\
+\cline{1-4}
+\multicolumn{2}{l|}{货物出口额} & \multicolumn{1}{|c}{237726} & \multicolumn{1}{|c}{0.6} \\
+\cline{1-4}
+\multicolumn{2}{l|}{其中；一般贸易} & \multicolumn{1}{|c}{153530} & \multicolumn{1}{|c}{2.5} \\
+\cline{1-4}
+\multicolumn{2}{l|}{加工贸易} & \multicolumn{1}{|c}{49062} & \multicolumn{1}{|c}{-9.0} \\
+\cline{1-4}
+\multicolumn{2}{l|}{其中有；机电产品} & \multicolumn{1}{|c}{139196} & \multicolumn{1}{|c}{2.9} \\
+\cline{1-4}
+\multicolumn{2}{l|}{高新技术产品} & \multicolumn{1}{|c}{59279} & \multicolumn{1}{|c}{-5.8} \\
+\cline{1-4}
+\multicolumn{2}{l|}{货物流通额} & \multicolumn{1}{|c}{179842} & \multicolumn{1}{|c}{-0.3} \\
+\cline{1-4}
+\multicolumn{2}{l|}{\text{其中；一般贸易}} & \multicolumn{1}{|c}{117042} & \multicolumn{1}{|c}{1.3} \\
+\cline{3-4}
+\multicolumn{2}{l|}{加工贸易} & \multIColumn{1}{|c}{27061} & \multicolumn{1}{|c}{-11.3} \\
+\cline{3-4}
+\multicolumn{2}{ l|}{其中；机电产品} & \multicolumn{1}{|c}{65363} & \multicolumn{1}{|c}{-5.5} \\
+\cline{3-4}
+\multicolumn{2}{l|}{高新技术产品} & \multIColumn{1}{|c}{47916} & \multicolumn{1}{|c}{-
+It says Could not find a valid tabular environment in the file. 
+Please consider modifications to fix this bug and give the full code after modification.
