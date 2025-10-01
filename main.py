@@ -75,14 +75,15 @@ if __name__ == "__main__":
 
     # start table parsing
     table_output_format = 'markdown'  # 'latex', 'markdown', 'html'
+    table_output_dir = f'output/layout_detection/{doc_name}/table_images'
     table_parsing_config = {
         'inputs': None,
-        'outputs': f'output/layout_detection/{doc_name}',
+        'outputs': table_output_dir,
         'tasks': {
             'table_parsing': {
                 'model': 'table_parsing_struct_eqtable',
                 'model_config': {
-                    'model_name_or_path': 'models/TabRec/StructEqTable',
+                    'model_path': 'models/TabRec/StructEqTable',
                     'max_new_tokens': 1024,
                     'max_time': 30,
                     'output_format': table_output_format,
@@ -112,9 +113,9 @@ if __name__ == "__main__":
         table_parsing_config['inputs'] = table_image_path
         task_instances = initialize_tasks_and_models(table_parsing_config)
         model_table_parsing = task_instances.get('table_parsing')
-        parsing_results = model_table_parsing.predict_images(table_image_path, result_path, output_format=table_output_format)
+        parsing_results = model_table_parsing.predict(table_image_path, result_path, output_format=table_output_format)
         # save the parsing results
-        parsing_result_path = Path(result_path) / f"{doc_name}_page{page_index}_table{table_id}_parsing.txt"
+        parsing_result_path = Path(result_path) / f"{doc_name}_page_{page_index:04d}_table_{table_id:04d}_parsing.txt"
         with open(parsing_result_path, 'w', encoding='utf-8') as f:
             f.write(parsing_results[0])
         logger.info(f"Saved parsing result to {parsing_result_path}")
