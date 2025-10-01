@@ -7,4 +7,4 @@
 - Use table parsing model StructEqTable to extract informations from table ad convert to latex formated .txt files.
 
 ** To Do **
-- replace StructEqTable with a beter table recognition model?
+- replace StructEqTable with a beter table recognition model? like Unitable model?

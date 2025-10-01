@@ -1,2 +1,7 @@
 /output
 /models/TabRec/StructEqTable
+/source
+/__pycache__
+/.vscode
+/.idea
+/.env

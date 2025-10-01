@@ -50,7 +50,7 @@ if __name__ == "__main__":
                     'visualize': True,  # whether to save visualization images
                     'nc': 10,
                     'workers': 8,
-                    'device': 'cpu'
+                    'device': 'cuda'
                 },
                 'save_table_images': True,  # whether to save cropped table images
                 'table_margin': 30   # margin to add when cropping table images
@@ -92,7 +92,7 @@ if __name__ == "__main__":
                 'model_config': {
                     'model_path': 'models/TabRec/StructEqTable',
                     'max_new_tokens': 4096,
-                    'max_time': 30,
+                    'max_time': 300,
                     'output_format': table_output_format,
                     'lmdeploy': False,
                     'flash_atten': True,
@@ -131,18 +131,19 @@ if __name__ == "__main__":
         with open(parsing_result_path, 'w', encoding='utf-8') as f:
             f.write(parsing_results[0])
         logger.info(f"Saved parsing result to {parsing_result_path}")
-        # do the rendering and col&row counting
-        rendered_table_path, num_cols, num_rows = process_latex_table(parsing_result_path)
 
-        # save to tabel info
-        table_info['parsed_content'] = parsing_results[0]
-        table_info['parsed_path'] = str(parsing_result_path)
-        table_info['rendered_path'] = str(rendered_table_path)
-        table_info['estimated_ncols'] = num_cols
-        table_info['estimated_nrows'] = num_rows
+    #     # do the rendering and col&row counting
+    #     rendered_table_path, num_cols, num_rows = process_latex_table(parsing_result_path)
 
-    document_tables_parsed_info_dir = os.path.join(result_path, 'document_tables_parsed_info.json')
-    save_list_of_dicts_to_json(doc_tables_info_list, document_tables_parsed_info_dir)
+    #     # save to tabel info
+    #     table_info['parsed_content'] = parsing_results[0]
+    #     table_info['parsed_path'] = str(parsing_result_path)
+    #     table_info['rendered_path'] = str(rendered_table_path)
+    #     table_info['estimated_ncols'] = num_cols
+    #     table_info['estimated_nrows'] = num_rows
+
+    # document_tables_parsed_info_dir = os.path.join(result_path, 'document_tables_parsed_info.json')
+    # save_list_of_dicts_to_json(doc_tables_info_list, document_tables_parsed_info_dir)
 
     pass
 

@@ -17,7 +17,7 @@ class TableParsingStructEqTable:
         assert torch.cuda.is_available(), "CUDA must be available for StructEqTable model."
 
         self.model_dir = config.get('model_path', 'U4R/StructTable-InternVL2-1B')
-        self.max_new_tokens = config.get('max_new_tokens', 1024)
+        self.max_new_tokens = config.get('max_new_tokens', 4096)
         self.max_time = config.get('max_time', 30)
 
         self.lmdeploy = config.get('lmdeploy', False)
