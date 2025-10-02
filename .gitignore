@@ -1,3 +1,7 @@
 /output
 /models/TabRec/StructEqTable
-.DS_Store
+/source
+/__pycache__
+/.vscode
+/.idea
+/.env

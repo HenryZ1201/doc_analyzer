@@ -6,8 +6,8 @@ from pdf_extract_kit.utils.visualization import visualize_bbox
 from loguru import logger
 import numpy as np
 import json
+from pdf_extract_kit.utils.json_processor import save_list_of_dicts_to_json
 # from pdf_extract_kit.dataset.dataset import ImageDataset
-
                 
 @MODEL_REGISTRY.register('layout_detection_yolo')
 class LayoutDetectionYOLO:
@@ -146,7 +146,7 @@ class LayoutDetectionYOLO:
             results.append(result)
     
         
-        self.save_list_of_dicts_to_json(page_table_info_list, os.path.join(result_path, 'document_tables_info.json'))  # save all pages table info to a json file
+        save_list_of_dicts_to_json(page_table_info_list, os.path.join(result_path, 'document_tables_info.json'))  # save all pages table info to a json file
 
         return results, page_table_info_list
     
@@ -205,14 +205,14 @@ class LayoutDetectionYOLO:
         
         return table_info_list
     
-    @staticmethod
-    def save_list_of_dicts_to_json(data, file_path):
-        """
-        Save a list of dictionaries to a JSON file.
+    # @staticmethod
+    # def save_list_of_dicts_to_json(data, file_path):
+    #     """
+    #     Save a list of dictionaries to a JSON file.
 
-        Args:
-            data (list): List of dictionaries.
-            file_path (str): Path to the output JSON file.
-        """
-        with open(file_path, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=4)
+    #     Args:
+    #         data (list): List of dictionaries.
+    #         file_path (str): Path to the output JSON file.
+    #     """
+    #     with open(file_path, 'w', encoding='utf-8') as f:
+    #         json.dump(data, f, ensure_ascii=False, indent=4)
