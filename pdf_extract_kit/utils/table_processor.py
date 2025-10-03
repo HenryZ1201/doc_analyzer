@@ -2,13 +2,195 @@ import os
 import re
 import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
-from typing import Tuple, List
+from typing import Tuple
+from collections import Counter
+import fitz
+from pdf_extract_kit.utils.data_preprocess import load_pdf_page
+from loguru import logger
+import numpy as np
 from collections import Counter
 
 
 # Set Chinese font globally for Matplotlib to display Chinese characters
 plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'WenQuanYi Zen Hei', 'Arial Unicode MS', 'Heiti TC']
 plt.rcParams['axes.unicode_minus'] = False # Correctly display minus signs
+
+def yolo_to_pdf_bbox(
+    yolo_bbox: list,
+    image_width: int,
+    image_height: int,
+    pdf_width: float,
+    pdf_height: float
+) -> tuple[float, float, float, float]:
+    """
+    Converts a bounding box from image-pixel coordinates (e.g., from YOLO detection
+    on a PDF-derived image) to PDF point coordinates.
+
+    This function calculates the scale factor directly from the known pixel dimensions
+    of the rendered image and the point dimensions of the original PDF page.
+
+    Args:
+        yolo_bbox: Bounding box in pixel coordinates [x_min, y_min, x_max, y_max].
+        image_width: Width of the image in pixels.
+        image_height: Height of the image in pixels.
+        pdf_width: Width of the PDF page in points.
+        pdf_height: Height of the PDF page in points.
+
+    Returns:
+        A tuple (x0, y0, x1, y1) representing the bounding box in PDF points.
+    """
+    if image_width == 0 or image_height == 0:
+        logger.error("Image dimensions cannot be zero for conversion.")
+        return (0.0, 0.0, 0.0, 0.0)
+
+    # 1. Calculate scaling factors (points per pixel)
+    # Scale_x = Image_Width / PDF_Width
+    scale_x = image_width / pdf_width
+    scale_y = image_height / pdf_height
+
+    # 2. Convert pixel coordinates back to point coordinates
+    x_min_pdf = yolo_bbox[0] / scale_x
+    y_min_pdf = yolo_bbox[1] / scale_y
+    x_max_pdf = yolo_bbox[2] / scale_x
+    y_max_pdf = yolo_bbox[3] / scale_y
+
+    logger.info(
+        f"Conversion: YOLO BBox {yolo_bbox} (Pixels) -> PDF BBox "
+        f"({x_min_pdf:.2f}, {y_min_pdf:.2f}, {x_max_pdf:.2f}, {y_max_pdf:.2f}) (Points)"
+    )
+
+    return (x_min_pdf, y_min_pdf, x_max_pdf, y_max_pdf)
+
+
+def visualize_and_save_pdf_bbox(
+    doc: fitz.Document,
+    page_index: int,
+    pdf_bbox: tuple[float, float, float, float],
+    output_pdf_path: str,
+    color: tuple[float, float, float] = (0, 1, 0),  # Green in RGB [0, 1]
+    width: float = 2.0
+) -> None:
+    """
+    Draws a rectangle on a specific PDF page and saves the modified document as a 
+    new single-page PDF file.
+
+    Args:
+        doc: The open fitz.Document object.
+        page_index: The 0-based index of the page to modify.
+        pdf_bbox: The bounding box in PDF points (x0, y0, x1, y1).
+        output_pdf_path: The path to save the modified single-page PDF file.
+        color: RGB tuple for the rectangle color (e.g., (0, 1, 0) for green).
+        width: The line width of the rectangle border in points.
+    """
+    try:
+        page = doc[page_index]
+    except IndexError:
+        logger.error(f"Page index {page_index} is out of range for the document.")
+        return
+
+    rect = fitz.Rect(pdf_bbox)
+
+    # Draw a rectangle with a border and no fill
+    page.draw_rect(
+        rect,
+        color=color,        # Stroke color
+        fill=None,          # No fill color
+        width=width,        # Line width
+        overlay=True        # Draw over existing content
+    )
+    logger.info(f"Drawn rectangle on Page {page_index + 1} at {rect}.")
+
+    # --- Save only the specified single page PDF ---
+    try:
+        new_doc = fitz.open() # Create an empty document
+        # Copy the modified page (page_index) from the source document (doc) to the new document.
+        # This copies the page *with* the newly drawn rectangle.
+        new_doc.insert_pdf(doc, from_page=page_index, to_page=page_index)
+
+        # Save the new single-page document
+        new_doc.save(output_pdf_path, garbage=4, deflate=True)
+        new_doc.close()
+        logger.info(f"Successfully saved single-page PDF to: {output_pdf_path}")
+    except Exception as e:
+        logger.error(f"Error saving single-page PDF: {e}")
+
+def extract_text_from_pdf_bbox(
+    doc: fitz.Document,
+    page_index: int,
+    pdf_bbox: tuple[float, float, float, float]
+) -> tuple[str, str]:
+    """
+    Extracts a table from a specific bounding box on a PDF page.
+
+    :param doc: The fitz.Document object.
+    :param page_index: The 0-based index of the page.
+    :param pdf_bbox: A tuple (x0, y0, x1, y1) representing the bounding box 
+                     in PDF coordinates (points).
+    :return: A tuple (plain_text_table, markdown_table) representing the 
+             extracted table. Returns empty strings if no table is found.
+    """
+    if not 0 <= page_index < len(doc):
+        return "Error: Page index out of range.", "Error: Page index out of range."
+
+    page = doc[page_index]
+    # Convert the input tuple to a fitz.Rect object for clipping
+    clip_rect = fitz.Rect(pdf_bbox)
+
+    # Use PyMuPDF's table extraction feature with the clipping rectangle
+    # This automatically handles spatial relations, multi-line cells, and language.
+    # It attempts to find tables *only* within the specified clip area.
+    tabs = page.find_tables(clip=clip_rect)
+
+    if not tabs.tables:
+        # Fallback to simple text extraction if table detection fails, 
+        # though this may not preserve table structure well.
+        plain_text = page.get_text("text", clip=clip_rect)
+        
+        # Format the plain text slightly for the Markdown string for better clarity
+        markdown_text = f"Could not find a structured table, raw text extracted:\n\n---\n\n{plain_text.strip()}"
+        return plain_text, markdown_text
+
+    # Assuming the content in the bbox is one table, take the first result
+    table = tabs.tables[0]
+
+    # Convert the table data to a list of lists (rows of cells)
+    data = table.extract()
+
+    # --- Generate Plain Text Table ---
+    plain_text_rows = []
+    # Determine the width for each column to align the text
+    col_widths = [max(len(str(item)) for item in col) for col in zip(*data)]
+    
+    for row in data:
+        formatted_row = []
+        for i, cell in enumerate(row):
+            # Convert cell to string and justify it based on column width
+            formatted_row.append(str(cell).ljust(col_widths[i]))
+        plain_text_rows.append(" | ".join(formatted_row))
+    
+    plain_text_table = "\n".join(plain_text_rows)
+
+
+    # --- Generate Markdown Table (GitHub Flavored Markdown) ---
+    markdown_rows = []
+    
+    # 1. Header Row
+    header = [str(cell) for cell in data[0]]
+    markdown_rows.append("| " + " | ".join(header) + " |")
+
+    # 2. Separator Row
+    separator = ["---" for _ in header]
+    markdown_rows.append("| " + " | ".join(separator) + " |")
+
+    # 3. Data Rows
+    for row in data[1:]:
+        content = [str(cell).replace('\n', '<br>') for cell in row] # Use <br> for newlines in Markdown cells
+        markdown_rows.append("| " + " | ".join(content) + " |")
+
+    markdown_table = "\n".join(markdown_rows)
+
+    return plain_text_table, markdown_table
+
 
 def clean_latex_cell(text: str) -> str:
     """
@@ -236,20 +418,6 @@ def process_latex_table(file_path: str) -> Tuple[str, int, int]:
     return output_path, num_cols, num_rows
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-from collections import Counter
 def process_markdown_table(file_path: str) -> Tuple[str, int, int]:
     """
     Process a single .txt file containing a Markdown table.

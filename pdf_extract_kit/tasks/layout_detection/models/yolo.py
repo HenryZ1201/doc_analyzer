@@ -174,20 +174,23 @@ class LayoutDetectionYOLO:
             cls = int(cls)
             if cls == 5:  # Table class
                 
-                box = np.round(boxes[i].cpu().numpy()).astype(int)  # 先四舍五入再转int
-                x1, y1, x2, y2 = box
+                # box = np.round(boxes[i].cpu().numpy()).astype(int)  # 先四舍五入再转int
+                x1, y1, x2, y2 = boxes[i].cpu().numpy().astype(float)
 
-                # 向外扩展 table_margin
-                x1 = max(0, x1 - table_margin)
-                x2 = x2 + table_margin
-                y1 = max(0, y1 - table_margin)
-                y2 = y2 + table_margin
+                box_int = np.round(boxes[i].cpu().numpy()).astype(int)  # 先四舍五入再转int
+                x1_int, y1_int, x2_int, y2_int = box_int
+
+                # # 向外扩展 table_margin
+                # x1 = max(0, x1 - table_margin)
+                # x2 = x2 + table_margin
+                # y1 = max(0, y1 - table_margin)
+                # y2 = y2 + table_margin
                 
                 # table name
                 table_img_name = f"{base_name}_table_{table_count+1:04d}.png"
 
                 # table image data
-                table_img = image.crop((x1, y1, x2, y2))
+                table_img = image.crop((x1_int, y1_int, x2_int, y2_int))
                 table_img_np = np.array(table_img)  # PIL.Image -> numpy array (RGB)
                 table_img_bgr = cv2.cvtColor(table_img_np, cv2.COLOR_RGB2BGR)  # RGB -> BGR
                 cv2.imwrite(os.path.join(table_images_path, table_img_name), table_img_bgr)
@@ -197,7 +200,7 @@ class LayoutDetectionYOLO:
                 table_info = {
                     'page_index': idx + 1,  # page number starting from 1
                     'table_id': table_count + 1,  # table body id on the page, starting from 1   
-                    'bbox': [int(x1), int(y1), int(x2), int(y2)],
+                    'bbox': [x1, y1, x2, y2],
                     'table_image_path': os.path.join(table_images_path, table_img_name)
                 }
                 table_info_list.append(table_info)

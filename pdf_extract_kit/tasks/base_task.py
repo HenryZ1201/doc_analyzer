@@ -51,6 +51,7 @@ class BaseTask:
                   Note: Loading multiple PDFs at once is not recommended due to high memory consumption. Consider processing one PDF at a time externally using loops or multithreading.
         """
         pdf_images = {}
+        pdf_images_info = {}
 
         if os.path.isdir(input_data):
             # If input_data is a directory, check for nested directories
@@ -62,8 +63,23 @@ class BaseTask:
                         pdf_path = os.path.join(root, file)
                         images = load_pdf(pdf_path)
                         for i, img in enumerate(images):
+                            image, image_width, image_height, effective_dpi, pdf_width, pdf_height, pdf_rotation, pdf_rect = img
                             img_id = f"{os.path.splitext(file)[0]}_page_{i+1:04d}"
-                            pdf_images[img_id] = img
+                            pdf_images[img_id] = image
+                            pdf_images_info[img_id] = {
+                                'image_width': image_width,
+                                'image_height': image_height,
+                                'dpi': effective_dpi,
+                                'pdf_width': pdf_width,
+                                'pdf_height': pdf_height,
+                                'pdf_rotation': pdf_rotation,
+                                'page_rect': {
+                                    0: pdf_rect.x0,
+                                    1: pdf_rect.y0,
+                                    2: pdf_rect.x1,
+                                    3: pdf_rect.y1
+                                }  # --- 新增: 存储页面的有效矩形区域 (fitz.Rect) ---
+                            }
                 # images = sorted(images)
                 break  # Only process the top-level directory
         else:
@@ -72,9 +88,24 @@ class BaseTask:
                 # If input is a single image file
                 images = load_pdf(input_data)
                 for i, img in enumerate(images):
+                    image, image_width, image_height, effective_dpi, pdf_width, pdf_height, pdf_rotation, pdf_rect = img
                     img_id = f"{os.path.splitext(os.path.basename(input_data))[0]}_page_{i+1:04d}"
-                    pdf_images[img_id] = img
+                    pdf_images[img_id] = image
+                    pdf_images_info[img_id] = {
+                        'image_width': image_width,
+                        'image_height': image_height,
+                        'dpi': effective_dpi,
+                        'pdf_width': pdf_width,
+                        'pdf_height': pdf_height,
+                        'pdf_rotation': pdf_rotation,
+                        'page_rect': {
+                            0: pdf_rect.x0,
+                            1: pdf_rect.y0,
+                            2: pdf_rect.x1,
+                            3: pdf_rect.y1
+                        }  # --- 新增: 存储页面的有效矩形区域 (fitz.Rect) ---
+                    }
             else:
                 raise ValueError("Unsupported input data format: {}".format(input_data))
 
-        return pdf_images
+        return pdf_images, pdf_images_info

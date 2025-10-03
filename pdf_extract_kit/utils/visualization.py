@@ -69,19 +69,7 @@ def visualize_bbox(image_path, bboxes, classes, scores, id_to_names, alpha=0.3, 
     cmap = colormap(N=len(id_to_names), normalized=False)
     
     # Iterate over each bounding box
-    for i, bbox in enumerate(bboxes):
-        # # box = np.round(bbox.cpu().numpy()).astype(int)  # 先四舍五入再转int
-        # x1, y1, x2, y2 = map(int, bbox)
-
-        # # margin
-        # table_margin = table_margin
-
-        # # 边界检查，向外扩展
-        # x_min = max(0, x1 - table_margin)
-        # x_max = x2 + table_margin
-        # y_min = max(0, y1 - table_margin)
-        # y_max = y2 + table_margin
-    
+    for i, bbox in enumerate(bboxes): 
 
         x_min, y_min, x_max, y_max = map(int, bbox)
         
